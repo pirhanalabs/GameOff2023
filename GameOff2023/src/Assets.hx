@@ -1,8 +1,16 @@
-enum Anim {}
+enum Anim
+{
+	Env;
+}
+
 enum Sprite {}
 enum Music {}
 enum Sfx {}
-enum Font {}
+
+enum Font
+{
+	CelticTime16;
+}
 
 class Assets
 {
@@ -15,6 +23,12 @@ class Assets
 		if (_initialized)
 			return;
 		_initialized = true;
+
+		// fonts
+		manager.fonts.set(CelticTime16, hxd.Res.fonts.celtictime.celtictime16.toFont());
+
+		// anims / tilesheets
+		manager.anims.set(Env, manager.subTilesheet(hxd.Res.sprites.env.toTile(), 32, 32, 0, 0));
 	}
 
 	public static function getFont(id:Font)
