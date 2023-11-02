@@ -1,0 +1,17 @@
+-lib heaps
+# -lib heaps-aseprite
+-lib pirhana
+-lib hlsdl
+
+-hl bin/client.hl
+
+-main Main
+
+-D windowSize=480x270
+# -D windowSize=1600x900
+# -D windowSize=1920x1080
+-D windowTitle=Dungeon of the Perished
+
+-cp src
+
+-debug
