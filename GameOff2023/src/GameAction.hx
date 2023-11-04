@@ -20,8 +20,8 @@ class GameAction
 		_instance = this;
 
 		MOVE_UP = Game.instance.inputs.createBinding(0, hxd.Key.W, PadButton.DPAD_UP);
-		MOVE_DOWN = Game.instance.inputs.createBinding(1, hxd.Key.W, PadButton.DPAD_DOWN);
-		MOVE_LEFT = Game.instance.inputs.createBinding(2, hxd.Key.W, PadButton.DPAD_LEFT);
-		MOVE_RIGHT = Game.instance.inputs.createBinding(3, hxd.Key.W, PadButton.DPAD_RIGHT);
+		MOVE_DOWN = Game.instance.inputs.createBinding(1, hxd.Key.S, PadButton.DPAD_DOWN);
+		MOVE_LEFT = Game.instance.inputs.createBinding(2, hxd.Key.A, PadButton.DPAD_LEFT);
+		MOVE_RIGHT = Game.instance.inputs.createBinding(3, hxd.Key.D, PadButton.DPAD_RIGHT);
 	}
 }

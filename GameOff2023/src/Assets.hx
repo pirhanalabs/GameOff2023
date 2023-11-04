@@ -1,9 +1,16 @@
+import engine.AssetManager;
+
 enum Anim
 {
 	Env;
+	Player;
 }
 
-enum Sprite {}
+enum Sprite
+{
+	PlayerShadow;
+}
+
 enum Music {}
 enum Sfx {}
 
@@ -16,7 +23,7 @@ class Assets
 {
 	private static var _initialized = false;
 
-	private static var manager:engine.AssetManager<Anim, Sprite, Font, Sfx, Music>;
+	private static var manager:AssetManager<Anim, Sprite, Font, Sfx, Music>;
 
 	public static function initialize()
 	{
@@ -24,11 +31,15 @@ class Assets
 			return;
 		_initialized = true;
 
+		manager = new AssetManager();
 		// fonts
 		manager.fonts.set(CelticTime16, hxd.Res.fonts.celtictime.celtictime16.toFont());
 
+		// sprites
+		manager.sprites.set(PlayerShadow, hxd.Res.sprites.player_shadow.toTile().center());
 		// anims / tilesheets
 		manager.anims.set(Env, manager.subTilesheet(hxd.Res.sprites.env.toTile(), 32, 32, 0, 0));
+		manager.anims.set(Player, manager.subTilesheet(hxd.Res.sprites.player.toTile(), 32, 32, -16, -24));
 	}
 
 	public static function getFont(id:Font)
