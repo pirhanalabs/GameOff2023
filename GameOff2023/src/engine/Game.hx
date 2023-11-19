@@ -47,6 +47,11 @@ class Game
 		screens.current.update(frame);
 		screens.current.postupdate();
 		camera.update(frame);
+
+		if (inputs.isAnyPadButtonPressed())
+		{
+			inputs.padLastTouched = true;
+		}
 	}
 
 	inline function get_window()

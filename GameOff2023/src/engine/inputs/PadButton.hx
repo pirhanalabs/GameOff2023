@@ -2,6 +2,7 @@ package engine.inputs;
 
 enum abstract PadButton(Int)
 {
+	var None;
 	var A;
 	var B;
 	var X;

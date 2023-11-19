@@ -13,11 +13,52 @@ class InputManager
 
 	private var enumBindings:Map<PadButton, Int>;
 
+	public var isGamepad(get, never):Bool;
+
+	private var _anyPadCheck = [
+		PadButton.A, PadButton.B, PadButton.X, PadButton.Y, PadButton.LSTICK_PUSH, PadButton.RSTICK_PUSH, PadButton.LB, PadButton.LT, PadButton.RB,
+		PadButton.RT, PadButton.START, PadButton.SELECT, PadButton.DPAD_DOWN, PadButton.DPAD_LEFT, PadButton.DPAD_RIGHT, PadButton.DPAD_UP
+	];
+
+	@:allow(engine.Game)
+	public var padLastTouched(default, null):Bool = false;
+
+	inline function get_isGamepad()
+	{
+		return pad.connected;
+	}
+
 	public function new()
 	{
 		pad = hxd.Pad.createDummy();
 		updateEnumBindings();
 		hxd.Pad.wait(_onPadConnected);
+		Game.instance.window.addEventTarget(onEventTarget);
+	}
+
+	public function isAnyPadButtonPressed()
+	{
+		if (!pad.connected)
+			return false;
+
+		for (btn in _anyPadCheck)
+		{
+			if (pad.isPressed(getPadButtonValue(btn)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private function onEventTarget(e:hxd.Event)
+	{
+		switch (e.kind)
+		{
+			case EKeyUp, EKeyDown, EPush, ERelease:
+				padLastTouched = false;
+			case _:
+		}
 	}
 
 	private function _onPadConnected(pad:hxd.Pad)

@@ -17,6 +17,33 @@ class InputBinding
 		this.button = button;
 	}
 
+	public function getName()
+	{
+		if (Game.instance.inputs.padLastTouched)
+		{
+			return switch (button)
+			{
+				case A: "A";
+				case B: "B";
+				case X: "X";
+				case Y: "Y";
+				case LB: "LB";
+				case LT: "LT";
+				case RB: "RB";
+				case RT: "RT";
+				case START: "Start";
+				case SELECT: "Select";
+				case DPAD_UP: "Up";
+				case DPAD_DOWN: "Down";
+				case DPAD_LEFT: "Left";
+				case DPAD_RIGHT: "Right";
+				case _: "NaN";
+			}
+		}
+
+		return String.fromCharCode(key);
+	}
+
 	public function isPressed()
 	{
 		if (manager.pad.connected)
