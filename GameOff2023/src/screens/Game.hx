@@ -51,6 +51,9 @@ class Game extends Screen
 	var win:Array<Window> = [];
 	var winput:Array<Window> = [];
 
+	var fadet:Float;
+	var fade:h2d.Bitmap;
+
 	public function new()
 	{
 		// do
@@ -63,6 +66,8 @@ class Game extends Screen
 		// initialize update methods
 		_upd = update_game;
 		_drw = postupdate_game;
+
+		fade = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, Const.VIEW_WID, Const.VIEW_HEI));
 
 		startgame();
 	}
@@ -88,6 +93,10 @@ class Game extends Screen
 
 		addMob(Shrimp, 11, 10);
 		addMob(Shrimp, 8, 7);
+
+		game.render(Hud, fade);
+		fade.alpha = 1;
+		fadet = 1;
 
 		pt = 0;
 	}
@@ -244,7 +253,6 @@ class Game extends Screen
 		return player.dead;
 	}
 
-	var go_pop:h2d.Object;
 	var go_text:h2d.Text;
 
 	function doGameOver()
@@ -252,21 +260,30 @@ class Game extends Screen
 		_upd = update_gameover;
 		_drw = postupdate_gameover;
 
-		go_pop = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, Const.VIEW_WID, Const.VIEW_HEI));
-		go_text = new h2d.Text(Assets.getFont(CelticTime16), go_pop);
+		fadet = 0;
+
+		go_text = new h2d.Text(Assets.getFont(CelticTime16));
 		go_text.textAlign = Center;
-		game.render(Hud, go_pop);
+		go_text.text = '';
+
+		game.render(Hud, fade);
+		game.render(Hud, go_text);
 	}
 
 	function update_gameover(frame:Frame)
 	{
+		if (fadet != 1)
+		{
+			fadet = Math.min(1, fadet + Math.pow(0.1, frame.tmod));
+			return;
+		}
 		if (game.inputs.isAnyPressed())
 		{
 			cleanup();
 			startgame();
 			_upd = update_game;
 			_drw = postupdate_game;
-			go_pop.remove();
+			go_text.remove();
 		}
 	}
 
@@ -288,7 +305,7 @@ class Game extends Screen
 		go_text.text = 'You lost!\n\nYou have been hit by a mob\nwith a higher score than you.\n\n press any ';
 		go_text.text += game.inputs.isGamepad ? 'button' : 'key';
 		go_text.x = Const.VIEW_WID_2;
-		go_text.y = Const.VIEW_HEI_2 - 20;
+		go_text.y = Const.VIEW_HEI_2 - 40;
 	}
 
 	function trigger_bump(tile:Level.LevelTile, cx:Int, cy:Int)
@@ -369,6 +386,12 @@ class Game extends Screen
 
 	function update_game(frame:Frame)
 	{
+		if (fadet != 0)
+		{
+			fadet = Math.max(0, fadet - Math.pow(0.2, frame.tmod));
+			trace(fadet);
+			return;
+		}
 		pausefollow = false;
 		if (winput.length == 0)
 		{
@@ -480,6 +503,11 @@ class Game extends Screen
 		drawScroller();
 	}
 
+	function postupdateFade()
+	{
+		fade.alpha = fadet;
+	}
+
 	public var pausefollow:Bool = false;
 
 	function drawScroller()
@@ -513,13 +541,12 @@ class Game extends Screen
 	{
 		mob.sprite.x = Std.int(mob.cx * Const.TILE_WID + mob.offx + mob.ox);
 		mob.sprite.y = Std.int(mob.cy * Const.TILE_HEI + mob.offx + mob.oy);
-		// mob.sprite.visible = mob.flash == 0 || Math.floor(mob.flash) % 6 > 3;
 		mob.score_o.text = '${mob.score}';
 		mob.score_o.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
 		mob.score_o.y = mob.sprite.tile.dy - 10;
 	}
 
-	function drawMobs()
+	function postupdateMobs()
 	{
 		for (mob in mobs)
 		{
@@ -527,6 +554,7 @@ class Game extends Screen
 		}
 		for (d in mobsDead)
 		{
+			// since we only do 1 hits, only them can flash!
 			d.mob.sprite.colorAdd = d.mob.flash == 0 ? d.mob.baseColor : d.mob.flashColor;
 			d.mob.sprite.visible = Math.sin(game.frame.frames * 8) > 0 && d.dur > 0;
 		}
@@ -563,7 +591,8 @@ class Game extends Screen
 	override function postupdate()
 	{
 		super.postupdate();
-		drawMobs();
+		postupdateMobs();
+		postupdateFade();
 		_drw();
 		drawWindows();
 		drawFloats();
