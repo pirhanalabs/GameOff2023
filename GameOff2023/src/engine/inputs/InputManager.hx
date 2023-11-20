@@ -23,6 +23,9 @@ class InputManager
 	@:allow(engine.Game)
 	public var padLastTouched(default, null):Bool = false;
 
+	@:allow(engine.Game)
+	var keyPressedLastFrame:Bool = false;
+
 	inline function get_isGamepad()
 	{
 		return pad.connected;
@@ -34,6 +37,16 @@ class InputManager
 		updateEnumBindings();
 		hxd.Pad.wait(_onPadConnected);
 		Game.instance.window.addEventTarget(onEventTarget);
+	}
+
+	public function isAnyPressed()
+	{
+		return isAnyPadButtonPressed() || isAnyKeyPressed();
+	}
+
+	public function isAnyKeyPressed()
+	{
+		return keyPressedLastFrame;
 	}
 
 	public function isAnyPadButtonPressed()
@@ -51,11 +64,24 @@ class InputManager
 		return false;
 	}
 
+	private var keymap:Map<Int, Bool> = [];
+
 	private function onEventTarget(e:hxd.Event)
 	{
 		switch (e.kind)
 		{
-			case EKeyUp, EKeyDown, EPush, ERelease:
+			case EKeyUp:
+				padLastTouched = false;
+				keymap.remove(e.keyCode);
+			case EKeyDown:
+				padLastTouched = false;
+				if (!keymap.exists(e.keyCode))
+				{
+					keymap.set(e.keyCode, true);
+					keyPressedLastFrame = true;
+				}
+
+			case EPush, ERelease:
 				padLastTouched = false;
 			case _:
 		}

@@ -48,10 +48,12 @@ class Game
 		screens.current.postupdate();
 		camera.update(frame);
 
+		// this should maybe just be put inside inputs.update(frame)
 		if (inputs.isAnyPadButtonPressed())
 		{
 			inputs.padLastTouched = true;
 		}
+		inputs.keyPressedLastFrame = false;
 	}
 
 	inline function get_window()

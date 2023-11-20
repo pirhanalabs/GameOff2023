@@ -6,7 +6,13 @@ import engine.utils.Direction;
 import h3d.col.HeightMap;
 import h3d.shader.GpuParticle;
 
+/**
+	NOTES:
+	-- Slow movements due to enemy AI taking a second.
+	-- enemy will kill you before you get to a location.
+**/
 typedef UpdateFn = (frame:Frame) -> Void;
+
 typedef PostUpdateFn = () -> Void;
 
 class Game extends Screen
@@ -25,7 +31,9 @@ class Game extends Screen
 			y:Float,
 			ty:Float,
 			t:Float
-		}> = [];
+		}>;
+
+	var mobsDead:Array<{mob:Mob, dur:Float}>;
 	var mobs:Array<Mob>;
 	var player:Mob;
 
@@ -74,6 +82,8 @@ class Game extends Screen
 		});
 
 		mobs = [];
+		mobsDead = [];
+		floats = [];
 		player = addMob(Player, 5, 5);
 
 		addMob(Shrimp, 11, 10);
@@ -104,7 +114,7 @@ class Game extends Screen
 		}
 	}
 
-	function isWalkable(cx:Int, cy:Int, checkmob:Bool)
+	function isWalkable(cx:Int, cy:Int, mode:String)
 	{
 		if (!_lvl.inBounds(cx, cy))
 		{
@@ -114,9 +124,14 @@ class Game extends Screen
 		{
 			return false;
 		}
-		if (checkmob && getMob(cx, cy) != null)
+
+		var mob = getMob(cx, cy);
+		if (mob != null)
 		{
-			return false;
+			if (mode == 'checkmob' || (mode == 'ignoreplayer' && mob != player))
+			{
+				return false;
+			}
 		}
 
 		return true;
@@ -134,9 +149,9 @@ class Game extends Screen
 		return null;
 	}
 
-	function moveMob(mob:Mob, dir:Direction)
+	function moveMob(mob:Mob, dir:Direction, mode:String = '')
 	{
-		mob.ani = mob.anims[dir];
+		mob.dir = dir;
 
 		var dx = dir.dx;
 		var dy = dir.dy;
@@ -146,7 +161,7 @@ class Game extends Screen
 		pt = 0;
 		_upd = update_pturn;
 
-		if (isWalkable(destx, desty, true))
+		if (isWalkable(destx, desty, mode))
 		{
 			mobwalk(mob, dx, dy);
 		}
@@ -197,21 +212,83 @@ class Game extends Screen
 	{
 		if (atk.score < def.score)
 		{
-			// atk die
+			// atker dies
 			def.flash = 15;
 			def.dead = true;
 			atk.score += def.score;
-			addFloat('+${def.score}', def.cx * Const.TILE_WID + Const.TILE_WID_2, def.cy * Const.TILE_HEI + Const.TILE_HEI_2, 0xb0d07e);
+			var x = def.cx * Const.TILE_WID + Const.TILE_WID_2;
+			var y = def.cy * Const.TILE_HEI;
+			addFloat('+${def.score}', x, y, 0xb0d07e);
+
+			// kill the mob
+			mobsDead.push({mob: def, dur: 10});
+			mobs.remove(def);
 		}
 		else
 		{
 			def.flash = 15;
 			def.dead = true;
 			atk.score += def.score;
-			addFloat('+${def.score}', def.cx * Const.TILE_WID + Const.TILE_WID_2, def.cy * Const.TILE_HEI + Const.TILE_HEI_2, 0xb0d07e);
-			// mobs.remove(def);
-			// def.sprite.remove();
+			var x = def.cx * Const.TILE_WID + Const.TILE_WID_2;
+			var y = def.cy * Const.TILE_HEI + Const.TILE_HEI_2 - 5;
+			addFloat('+${def.score}', x, y, 0xb0d07e);
+
+			// kill the mob
+			mobsDead.push({mob: def, dur: 10});
+			mobs.remove(def);
 		}
+	}
+
+	function checkEnd()
+	{
+		return player.dead;
+	}
+
+	var go_pop:h2d.Object;
+	var go_text:h2d.Text;
+
+	function doGameOver()
+	{
+		_upd = update_gameover;
+		_drw = postupdate_gameover;
+
+		go_pop = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, Const.VIEW_WID, Const.VIEW_HEI));
+		go_text = new h2d.Text(Assets.getFont(CelticTime16), go_pop);
+		go_text.textAlign = Center;
+		game.render(Hud, go_pop);
+	}
+
+	function update_gameover(frame:Frame)
+	{
+		if (game.inputs.isAnyPressed())
+		{
+			cleanup();
+			startgame();
+			_upd = update_game;
+			_drw = postupdate_game;
+			go_pop.remove();
+		}
+	}
+
+	function cleanup()
+	{
+		for (mob in mobs)
+		{
+			mob.sprite.remove();
+		}
+
+		for (float in floats)
+		{
+			float.txt.remove();
+		}
+	}
+
+	function postupdate_gameover()
+	{
+		go_text.text = 'You lost!\n\nYou have been hit by a mob\nwith a higher score than you.\n\n press any ';
+		go_text.text += game.inputs.isGamepad ? 'button' : 'key';
+		go_text.x = Const.VIEW_WID_2;
+		go_text.y = Const.VIEW_HEI_2 - 20;
 	}
 
 	function trigger_bump(tile:Level.LevelTile, cx:Int, cy:Int)
@@ -245,12 +322,48 @@ class Game extends Screen
 		pt = Math.min(pt + 0.128 * frame.tmod, 1);
 
 		player.mov(player, pt);
+		// update_ai(frame);
+
+		if (pt == 1)
+		{
+			player.ox = 0;
+			player.oy = 0;
+
+			if (checkEnd())
+			{
+				doGameOver();
+			}
+			else
+			{
+				pt = 0;
+				doAI();
+				_upd = update_ai;
+			}
+		}
+	}
+
+	function update_ai(frame:Frame)
+	{
+		pt = Math.min(pt + 0.128 * frame.tmod, 1);
+		for (mob in mobs)
+		{
+			if (mob == player || mob.dead)
+			{
+				continue;
+			}
+			if (mob.mov != null)
+			{
+				mob.mov(mob, pt);
+			}
+		}
 
 		if (pt == 1)
 		{
 			_upd = update_game;
-			player.ox = 0;
-			player.oy = 0;
+			if (checkEnd())
+			{
+				doGameOver();
+			}
 		}
 	}
 
@@ -288,7 +401,7 @@ class Game extends Screen
 		f.txt.textColor = color;
 		f.txt.x = x;
 		f.txt.y = y;
-		game.render(Actors, f.txt);
+		game.render(Overlay, f.txt);
 		floats.push(f);
 	}
 
@@ -330,7 +443,8 @@ class Game extends Screen
 
 		if (btn < 4)
 		{
-			moveMob(player, dirs[btn]);
+			moveMob(player, dirs[btn], 'checkmob');
+			// doAI();
 			return;
 		}
 	}
@@ -399,12 +513,23 @@ class Game extends Screen
 	{
 		mob.sprite.x = Std.int(mob.cx * Const.TILE_WID + mob.offx + mob.ox);
 		mob.sprite.y = Std.int(mob.cy * Const.TILE_HEI + mob.offx + mob.oy);
-		mob.sprite.tile = getFrame(mob.ani);
-		mob.sprite.colorAdd = Math.floor(mob.flash) % 8 < 4 ? mob.baseColor : mob.flashColor;
-		mob.sprite.visible = mob.flash == 0 || Math.floor(mob.flash) % 8 > 4;
+		// mob.sprite.visible = mob.flash == 0 || Math.floor(mob.flash) % 6 > 3;
 		mob.score_o.text = '${mob.score}';
 		mob.score_o.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
 		mob.score_o.y = mob.sprite.tile.dy - 10;
+	}
+
+	function drawMobs()
+	{
+		for (mob in mobs)
+		{
+			mob.sprite.tile = getFrame(mob.ani);
+		}
+		for (d in mobsDead)
+		{
+			d.mob.sprite.colorAdd = d.mob.flash == 0 ? d.mob.baseColor : d.mob.flashColor;
+			d.mob.sprite.visible = Math.sin(game.frame.frames * 8) > 0 && d.dur > 0;
+		}
 	}
 
 	function getFrame(ani:Array<h2d.Tile>)
@@ -420,25 +545,84 @@ class Game extends Screen
 		updateWindows(frame);
 		updateFloats(frame);
 
-		for (mob in mobs.iterator())
+		for (data in mobsDead.iterator())
 		{
+			var mob = data.mob;
 			mob.flash = Math.max(mob.flash - Math.pow(1, frame.tmod), 0);
-			if (mob.dead && mob.flash == 0)
+			data.dur = Math.max(data.dur - Math.pow(1, frame.tmod), 0);
+			if (data.dur <= 0)
 			{
-				mobs.remove(mob);
+				mobsDead.remove(data);
 				mob.sprite.remove();
 			}
 		}
+
 		_upd(frame);
 	}
 
 	override function postupdate()
 	{
 		super.postupdate();
+		drawMobs();
 		_drw();
 		drawWindows();
 		drawFloats();
 		game.layers.ysort(Actors);
+	}
+
+	// ===================================
+	// pathfinding things
+	// ===================================
+	function doAI()
+	{
+		for (mob in mobs)
+		{
+			if (mob == player || mob.dead)
+			{
+				continue;
+			}
+
+			mob.resetMovement();
+
+			if (dist(mob.cx, mob.cy, player.cx, player.cy) <= 1)
+			{
+				var dx = player.cx - mob.cx;
+				var dy = player.cy - mob.cy;
+				mob.dir = engine.utils.Direction.fromDeltas(dx, dy);
+
+				mobbump(mob, dx, dy);
+				hitmob(mob, player);
+				// attack player if stronger
+				// do nothing if weaker
+				continue;
+			}
+
+			// gets the best direction
+			var bdst = 999.0;
+			var bdx = 0;
+			var bdy = 0;
+
+			for (i in 0...4)
+			{
+				var dx = dirx[i];
+				var dy = diry[i];
+				var dst = dist(mob.cx + dx, mob.cy + dy, player.cx, player.cy);
+
+				if (isWalkable(mob.cx + dx, mob.cy + dy, 'checkmob') && dst < bdst)
+				{
+					bdst = dst;
+					bdx = dx;
+					bdy = dy;
+				}
+			}
+			mobwalk(mob, bdx, bdy);
+			mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
+		}
+	}
+
+	function dist(fx, fy, tx, ty)
+	{
+		return Math.sqrt((fx - tx) * (fx - tx) + (fy - ty) * (fy - ty));
 	}
 }
 
@@ -471,11 +655,16 @@ class Mob
 	public var oy:Float;
 
 	// animations
-	public var dir(default, null):engine.utils.Direction;
+	public var dir:engine.utils.Direction;
 	public var sprite(default, null):h2d.Bitmap;
 	public var score_o(default, null):h2d.Text;
-	public var ani:Array<h2d.Tile>;
+	public var ani(get, never):Array<h2d.Tile>;
 	public var anims(default, null):Array<Array<h2d.Tile>>;
+
+	inline function get_ani()
+	{
+		return anims[dir];
+	}
 
 	// anim
 	public var mov:Null<(mob:Mob, t:Float) -> Void>;
@@ -539,8 +728,15 @@ class Mob
 			case _:
 				anims = [[null], [null], [null], [null]];
 		}
+	}
 
-		ani = anims[2];
+	public function resetMovement()
+	{
+		mov = null;
+		sx = 0;
+		sy = 0;
+		ox = 0;
+		oy = 0;
 	}
 }
 

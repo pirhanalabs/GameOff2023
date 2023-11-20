@@ -7,6 +7,22 @@ enum abstract Direction(Int) to Int
 	var Down = 2;
 	var Right = 3;
 
+	/**
+		If dx and dy or invalid, will return Up;
+	**/
+	public static function fromDeltas(dx:Int, dy:Int):Direction
+	{
+		if (dx == 0 && dy == -1)
+			return Up;
+		if (dx == 0 && dy == 1)
+			return Down;
+		if (dy == 0 && dx == -1)
+			return Left;
+		if (dx == 1 && dx == 1)
+			return Right;
+		return Up;
+	}
+
 	public var dx(get, never):Int;
 	public var dy(get, never):Int;
 
