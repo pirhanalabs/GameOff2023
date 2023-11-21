@@ -33,7 +33,7 @@ class Mob
 	}
 
 	// anim
-	public var mov:Null<(mob:Mob, t:Float) -> Void>;
+	public var mov:Null<(mob:Mob) -> Void>;
 	public var flash:Float = 0;
 	public var baseColor:h3d.Vector = new h3d.Vector(0, 0, 0);
 	public var flashColor:h3d.Vector = new h3d.Vector(1, 1, 1);
@@ -44,6 +44,12 @@ class Mob
 
 	// stats
 	public var score:Int;
+	public var los:Int;
+
+	// behavior stuff
+	public var task:Mob->Bool;
+	public var targetx:Int;
+	public var targety:Int;
 
 	public function new(type:MobType, cx:Int, cy:Int)
 	{
@@ -70,6 +76,7 @@ class Mob
 		this.offy = 0;
 
 		this.score = 1;
+		this.los = 4;
 
 		switch (type)
 		{
@@ -82,7 +89,7 @@ class Mob
 				];
 				offx = 16;
 				offy = 24;
-				this.score = 3;
+				score = 3;
 			case Shrimp:
 				anims = [
 					Assets.getAnim(Assets.Anim.ShrimpWalkUp),

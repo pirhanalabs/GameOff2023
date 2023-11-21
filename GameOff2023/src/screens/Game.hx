@@ -11,6 +11,8 @@ import h3d.shader.GpuParticle;
 	-- Slow movements due to enemy AI taking a second.
 	-- enemy will kill you before you get to a location.
 **/
+//
+
 typedef UpdateFn = (frame:Frame) -> Void;
 
 typedef PostUpdateFn = () -> Void;
@@ -35,10 +37,17 @@ class Game extends Screen
 
 	var mobsDead:Array<{mob:Mob, dur:Float}>;
 	var mobs:Array<Mob>;
+
+	/**
+		0 => light
+		1 => fog
+	**/
+	var fog:pirhana.Grid2D<Int>;
+
 	var player:Mob;
 
-	var dirx = [0, 0, -1, 1];
-	var diry = [-1, 1, 0, 0];
+	var dirx = [0, 0, -1, 1, 1, 1, -1, -1];
+	var diry = [-1, 1, 0, 0, -1, 1, 1, -1];
 	var dirs = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
 	var btn_buffer:Int = -1;
 	var btns = [
@@ -53,6 +62,8 @@ class Game extends Screen
 
 	var fadet:Float;
 	var fade:h2d.Bitmap;
+
+	var wait:Float = 0;
 
 	public function new()
 	{
@@ -76,7 +87,16 @@ class Game extends Screen
 	{
 		_lvl = new Level();
 
+		// tile cleanup
+		if (tiles != null)
+		{
+			for (tile in tiles)
+			{
+				tile.remove();
+			}
+		}
 		tiles = [];
+
 		_lvl.each((x, y, t) ->
 		{
 			var b = new h2d.Bitmap(Assets.getAnim(Env)[t.getTileId()]);
@@ -89,7 +109,11 @@ class Game extends Screen
 		mobs = [];
 		mobsDead = [];
 		floats = [];
+		fog = new pirhana.Grid2D(_lvl.width, _lvl.height, (x, y) -> 1);
+
+		pausefollow = false;
 		player = addMob(Player, 5, 5);
+		drawScroller(1);
 
 		addMob(Shrimp, 11, 10);
 		addMob(Shrimp, 8, 7);
@@ -97,6 +121,8 @@ class Game extends Screen
 		game.render(Hud, fade);
 		fade.alpha = 1;
 		fadet = 1;
+
+		unfog(player.cx, player.cy);
 
 		pt = 0;
 	}
@@ -125,9 +151,18 @@ class Game extends Screen
 
 	function isWalkable(cx:Int, cy:Int, mode:String)
 	{
+		// types
+		// sight = check for sight
+		// ignoreplayer = checkmob but ignore player
+		// checkmob = mobs block path
+
 		if (!_lvl.inBounds(cx, cy))
 		{
 			return false;
+		}
+		if (mode == 'sight')
+		{
+			return !_lvl.getTile(cx, cy).fget(BlockSight);
 		}
 		if (_lvl.getTile(cx, cy).fget(Col))
 		{
@@ -158,6 +193,7 @@ class Game extends Screen
 		return null;
 	}
 
+	// player only
 	function moveMob(mob:Mob, dir:Direction, mode:String = '')
 	{
 		mob.dir = dir;
@@ -170,14 +206,18 @@ class Game extends Screen
 		pt = 0;
 		_upd = update_pturn;
 
-		if (isWalkable(destx, desty, mode))
+		if (isWalkable(destx, desty, "checkmob"))
 		{
 			mobwalk(mob, dx, dy);
+			pt = 0;
+			_upd = update_pturn;
 		}
 		else
 		{
 			pausefollow = true;
 			mobbump(mob, dx, dy);
+			pt = 0;
+			_upd = update_pturn;
 
 			var other = getMob(destx, desty);
 			if (other == null)
@@ -195,6 +235,7 @@ class Game extends Screen
 				// game.camera.bump(dx * 2 * -1, dy * 2 * -1);
 			}
 		}
+		unfog(player.cx, player.cy);
 	}
 
 	function mobwalk(mob:Mob, dx:Int, dy:Int)
@@ -262,9 +303,12 @@ class Game extends Screen
 
 		fadet = 0;
 
+		wait = 10;
+
 		go_text = new h2d.Text(Assets.getFont(CelticTime16));
 		go_text.textAlign = Center;
 		go_text.text = '';
+		go_text.visible = false;
 
 		game.render(Hud, fade);
 		game.render(Hud, go_text);
@@ -302,6 +346,7 @@ class Game extends Screen
 
 	function postupdate_gameover()
 	{
+		go_text.visible = fadet == 1;
 		go_text.text = 'You lost!\n\nYou have been hit by a mob\nwith a higher score than you.\n\n press any ';
 		go_text.text += game.inputs.isGamepad ? 'button' : 'key';
 		go_text.x = Const.VIEW_WID_2;
@@ -319,15 +364,15 @@ class Game extends Screen
 		}
 	}
 
-	function mov_walk(mob:Mob, t:Float)
+	function mov_walk(mob:Mob)
 	{
-		mob.ox = mob.sx * (1 - t);
-		mob.oy = mob.sy * (1 - t);
+		mob.ox = mob.sx * (1 - pt);
+		mob.oy = mob.sy * (1 - pt);
 	}
 
-	function mov_bump(mob:Mob, t:Float)
+	function mov_bump(mob:Mob)
 	{
-		var time = t < 0.5 ? t : 1 - t;
+		var time = pt < 0.5 ? pt : 1 - pt;
 		mob.ox = mob.sx * time;
 		mob.oy = mob.sy * time;
 	}
@@ -336,15 +381,21 @@ class Game extends Screen
 	{
 		updateBtnBuffer();
 
-		pt = Math.min(pt + 0.128 * frame.tmod, 1);
+		pt = Math.min(pt + 0.125 * frame.tmod, 1);
 
-		player.mov(player, pt);
+		if (player.mov != null)
+		{
+			player.mov(player);
+		}
+
 		// update_ai(frame);
 
 		if (pt == 1)
 		{
 			player.ox = 0;
 			player.oy = 0;
+			pt = 0;
+			_upd = update_game;
 
 			if (checkEnd())
 			{
@@ -352,16 +403,14 @@ class Game extends Screen
 			}
 			else
 			{
-				pt = 0;
 				doAI();
-				_upd = update_ai;
 			}
 		}
 	}
 
 	function update_ai(frame:Frame)
 	{
-		pt = Math.min(pt + 0.128 * frame.tmod, 1);
+		pt = Math.min(pt + 0.2 * frame.tmod, 1);
 		for (mob in mobs)
 		{
 			if (mob == player || mob.dead)
@@ -370,7 +419,7 @@ class Game extends Screen
 			}
 			if (mob.mov != null)
 			{
-				mob.mov(mob, pt);
+				mob.mov(mob);
 			}
 		}
 
@@ -389,7 +438,6 @@ class Game extends Screen
 		if (fadet != 0)
 		{
 			fadet = Math.max(0, fadet - Math.pow(0.2, frame.tmod));
-			trace(fadet);
 			return;
 		}
 		pausefollow = false;
@@ -404,6 +452,12 @@ class Game extends Screen
 	function addMob(type:MobType, cx:Int, cy:Int)
 	{
 		var mob = new Mob(type, cx, cy);
+		switch (type)
+		{
+			case Shrimp:
+				mob.task = ai_wait;
+			case _:
+		}
 		mobs.push(mob);
 		game.render(Actors, mob.sprite);
 		return mob;
@@ -412,13 +466,13 @@ class Game extends Screen
 	function addFloat(txt:String, x:Float, y:Float, color:Int = 0xffffff)
 	{
 		var f = {
-			txt: new h2d.Text(Assets.getFont(BitFantasy16)),
+			txt: new h2d.Text(Assets.getFont(CelticTime16)),
 			x: x,
 			y: y,
-			ty: y - 24,
+			ty: y - 20,
 			t: 0.0
 		};
-		f.txt.filter = new PixelOutline();
+		f.txt.filter = new PixelOutline(0, 1, false);
 		f.txt.text = txt;
 		f.txt.textAlign = Center;
 		f.txt.textColor = color;
@@ -426,15 +480,16 @@ class Game extends Screen
 		f.txt.y = y;
 		game.render(Overlay, f.txt);
 		floats.push(f);
+		return f;
 	}
 
 	function updateFloats(frame:Frame)
 	{
 		for (f in floats.iterator())
 		{
-			f.y += (f.ty - f.y) / 24;
+			f.y += (f.ty - f.y) / 20;
 			f.t += Math.pow(1, frame.tmod);
-			if (f.t > 70)
+			if (f.t > 50)
 			{
 				f.txt.remove();
 				floats.remove(f);
@@ -510,14 +565,14 @@ class Game extends Screen
 
 	public var pausefollow:Bool = false;
 
-	function drawScroller()
+	function drawScroller(mult = 0.2)
 	{
 		if (pausefollow)
 			return;
 		var destx = (Const.VIEW_WID_2 - player.sprite.x) - game.layers.scroller.x;
 		var desty = (Const.VIEW_HEI_2 - player.sprite.y) - game.layers.scroller.y;
-		game.layers.scroller.x += destx * 0.2 * game.frame.tmod;
-		game.layers.scroller.y += desty * 0.2 * game.frame.tmod;
+		game.layers.scroller.x += destx * mult * game.frame.tmod;
+		game.layers.scroller.y += desty * mult * game.frame.tmod;
 		// bounds
 		if (game.layers.scroller.x < Const.VIEW_WID - _lvl.width * Const.TILE_WID)
 		{
@@ -585,6 +640,11 @@ class Game extends Screen
 			}
 		}
 
+		if (wait > 0)
+		{
+			wait -= Math.pow(1, frame.tmod);
+			return;
+		}
 		_upd(frame);
 	}
 
@@ -596,14 +656,93 @@ class Game extends Screen
 		_drw();
 		drawWindows();
 		drawFloats();
+
+		// fog
+		_lvl.each((x, y, tile) ->
+		{
+			tiles[y * _lvl.width + x].visible = fog.get(x, y) == 0;
+			var mob = getMob(x, y);
+			if (mob != null)
+			{
+				mob.sprite.visible = fog.get(x, y) == 0;
+			}
+		});
+
 		game.layers.ysort(Actors);
 	}
 
-	// ===================================
-	// pathfinding things
-	// ===================================
+	function ai_wait(mob:Mob)
+	{
+		if (cansee(player, mob, mob.los))
+		{
+			mob.task = ai_attack;
+			mob.targetx = player.cx;
+			mob.targety = player.cy;
+			var f = addFloat('!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			f.txt.scale(2);
+			return true;
+		}
+		return false;
+	}
+
+	function ai_attack(mob:Mob)
+	{
+		// attack block
+		// todo:
+		// attack player if stronger
+		// do nothing if weakers
+		if (dist(mob.cx, mob.cy, player.cx, player.cy) <= 1)
+		{
+			var dx = player.cx - mob.cx;
+			var dy = player.cy - mob.cy;
+			mob.dir = engine.utils.Direction.fromDeltas(dx, dy);
+			mobbump(mob, dx, dy);
+			hitmob(mob, player);
+			return true;
+		}
+
+		if (cansee(player, mob, mob.los))
+		{
+			mob.targetx = player.cx;
+			mob.targety = player.cy;
+		}
+
+		if (mob.cx == mob.targetx && mob.cy == mob.targety)
+		{
+			mob.task = ai_wait;
+			addFloat('?', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			return true;
+		}
+
+		// move block
+		// gets the best direction
+		var bdst = 999.0;
+		var bdx = 0;
+		var bdy = 0;
+
+		for (i in 0...4)
+		{
+			var dx = dirx[i];
+			var dy = diry[i];
+			var dst = dist(mob.cx + dx, mob.cy + dy, mob.targetx, mob.targety);
+
+			if (isWalkable(mob.cx + dx, mob.cy + dy, 'checkmob') && dst < bdst)
+			{
+				bdst = dst;
+				bdx = dx;
+				bdy = dy;
+			}
+		}
+		mobwalk(mob, bdx, bdy);
+		// reaquire target?
+		mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
+		return true;
+	}
+
 	function doAI()
 	{
+		var moving = false;
+
 		for (mob in mobs)
 		{
 			if (mob == player || mob.dead)
@@ -612,45 +751,102 @@ class Game extends Screen
 			}
 
 			mob.resetMovement();
+			moving = mob.task(mob) || moving;
+		}
 
-			if (dist(mob.cx, mob.cy, player.cx, player.cy) <= 1)
-			{
-				var dx = player.cx - mob.cx;
-				var dy = player.cy - mob.cy;
-				mob.dir = engine.utils.Direction.fromDeltas(dx, dy);
-
-				mobbump(mob, dx, dy);
-				hitmob(mob, player);
-				// attack player if stronger
-				// do nothing if weaker
-				continue;
-			}
-
-			// gets the best direction
-			var bdst = 999.0;
-			var bdx = 0;
-			var bdy = 0;
-
-			for (i in 0...4)
-			{
-				var dx = dirx[i];
-				var dy = diry[i];
-				var dst = dist(mob.cx + dx, mob.cy + dy, player.cx, player.cy);
-
-				if (isWalkable(mob.cx + dx, mob.cy + dy, 'checkmob') && dst < bdst)
-				{
-					bdst = dst;
-					bdx = dx;
-					bdy = dy;
-				}
-			}
-			mobwalk(mob, bdx, bdy);
-			mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
+		if (moving)
+		{
+			pt = 0;
+			_upd = update_ai;
 		}
 	}
 
 	function dist(fx, fy, tx, ty)
 	{
 		return Math.sqrt((fx - tx) * (fx - tx) + (fy - ty) * (fy - ty));
+	}
+
+	function los(x1, y1, x2, y2)
+	{
+		var sx = 0;
+		var sy = 0;
+		var dx = 0;
+		var dy = 0;
+
+		if (dist(x1, y1, x2, y2) == 1)
+			return true;
+
+		sx = x1 < x2 ? 1 : -1;
+		sy = y1 < y2 ? 1 : -1;
+		dx = x1 < x2 ? x2 - x1 : x1 - x2;
+		dy = y1 < y2 ? y2 - y1 : y1 - y2;
+
+		var err = dx - dy;
+		var e2 = 0.0;
+
+		while (!(x1 == x2 && y1 == y2))
+		{
+			if (!isWalkable(x1, y1, "sight"))
+				return false;
+			e2 = err + err;
+			// first = false;
+			if (e2 > -dy)
+			{
+				err -= dy;
+				x1 += sx;
+			}
+			if (e2 < dx)
+			{
+				err += dx;
+				y1 += sy;
+			}
+		}
+
+		return true;
+	}
+
+	function unfog(cx:Int, cy:Int)
+	{
+		// for (y in 0...fog.hei)
+		// {
+		// 	for (x in 0...fog.wid)
+		// 	{
+		// 		fog.set(x, y, 1);
+		// 	}
+		// }
+
+		_lvl.each((x, y, tile) ->
+		{
+			if (fog.get(x, y) > 0 && los(x, y, cx, cy) && dist(cx, cy, x, y) < player.los)
+			{
+				unfogtile(x, y);
+			}
+		});
+	}
+
+	function unfogtile(cx:Int, cy:Int)
+	{
+		fog.set(cx, cy, 0);
+		if (isWalkable(cx, cy, 'sight'))
+		{
+			for (i in 0...4)
+			{
+				var dx = dirx[i];
+				var dy = diry[i];
+				if (!isWalkable(cx + dx, cy + dy, "sight"))
+				{
+					fog.set(cx + dx, cy + dy, 0);
+				}
+			}
+		}
+	}
+
+	function cansee(mob1:Mob, mob2:Mob, sight:Int = 99)
+	{
+		if (dist(mob1.cx, mob1.cy, mob2.cx, mob2.cy) < sight)
+		{
+			return los(mob1.cx, mob1.cy, mob2.cx, mob2.cy);
+		}
+		return false;
 	}
 }

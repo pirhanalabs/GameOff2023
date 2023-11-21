@@ -4,7 +4,7 @@ import pirhana.Grid2D;
 enum TileFlag
 {
 	Col; // collision
-	See; // seethrough
+	BlockSight;
 	Bmp; // bump trigger
 	Stp; // step trigger
 }
@@ -27,11 +27,12 @@ class LevelTile
 		switch (id)
 		{
 			case 1:
-				flags.set(See);
+
 			case 2:
 				flags.set(Col);
-				flags.set(See);
+				flags.set(BlockSight);
 			case 3:
+				flags.set(BlockSight);
 				flags.set(Col);
 			case 4: // ?
 				flags.set(Bmp);
