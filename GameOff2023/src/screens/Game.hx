@@ -59,11 +59,12 @@ class Game extends Screen
 
 	var win:Array<Window> = [];
 	var winput:Array<Window> = [];
+	var distmap:pirhana.Grid2D<Int>;
 
 	var fadet:Float;
 	var fade:h2d.Bitmap;
 
-	var wait:Float = 0;
+	var wait:Float = 0; // do
 
 	public function new()
 	{
@@ -116,6 +117,8 @@ class Game extends Screen
 		drawScroller(1);
 
 		addMob(Shrimp, 11, 10);
+		addMob(Shrimp, 12, 10);
+		addMob(Shrimp, 13, 10);
 		addMob(Shrimp, 8, 7);
 
 		game.render(Hud, fade);
@@ -209,15 +212,11 @@ class Game extends Screen
 		if (isWalkable(destx, desty, "checkmob"))
 		{
 			mobwalk(mob, dx, dy);
-			pt = 0;
-			_upd = update_pturn;
 		}
 		else
 		{
 			pausefollow = true;
 			mobbump(mob, dx, dy);
-			pt = 0;
-			_upd = update_pturn;
 
 			var other = getMob(destx, desty);
 			if (other == null)
@@ -397,6 +396,7 @@ class Game extends Screen
 			pt = 0;
 			_upd = update_game;
 
+			astar(player.cx, player.cy);
 			if (checkEnd())
 			{
 				doGameOver();
@@ -596,9 +596,13 @@ class Game extends Screen
 	{
 		mob.sprite.x = Std.int(mob.cx * Const.TILE_WID + mob.offx + mob.ox);
 		mob.sprite.y = Std.int(mob.cy * Const.TILE_HEI + mob.offx + mob.oy);
+
+		mob.scorebg.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
+		mob.scorebg.y = mob.sprite.tile.dy - 8; // sham
+
 		mob.score_o.text = '${mob.score}';
-		mob.score_o.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
-		mob.score_o.y = mob.sprite.tile.dy - 10;
+		// mob.score_o.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
+		// mob.score_o.y = mob.sprite.tile.dy - 10;
 	}
 
 	function postupdateMobs()
@@ -701,12 +705,6 @@ class Game extends Screen
 			return true;
 		}
 
-		if (cansee(player, mob, mob.los))
-		{
-			mob.targetx = player.cx;
-			mob.targety = player.cy;
-		}
-
 		if (mob.cx == mob.targetx && mob.cy == mob.targety)
 		{
 			mob.task = ai_wait;
@@ -714,29 +712,58 @@ class Game extends Screen
 			return true;
 		}
 
-		// move block
-		// gets the best direction
 		var bdst = 999.0;
 		var bdx = 0;
 		var bdy = 0;
+		var candidates = [];
+
+		astar(mob.targetx, mob.targety);
 
 		for (i in 0...4)
 		{
 			var dx = dirx[i];
 			var dy = diry[i];
-			var dst = dist(mob.cx + dx, mob.cy + dy, mob.targetx, mob.targety);
 
-			if (isWalkable(mob.cx + dx, mob.cy + dy, 'checkmob') && dst < bdst)
+			if (isWalkable(mob.cx + dx, mob.cy + dy, ''))
 			{
-				bdst = dst;
-				bdx = dx;
-				bdy = dy;
+				var dst = distmap.get(mob.cx + dx, mob.cy + dy);
+				if (dst < bdst)
+				{
+					candidates = [];
+					bdst = dst;
+				}
+				if (dst == bdst)
+				{
+					candidates.push({dx: dx, dy: dy});
+				}
 			}
 		}
-		mobwalk(mob, bdx, bdy);
-		// reaquire target?
-		mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
-		return true;
+
+		// this makes the mob wait rather than take undesireable directions
+		for (cand in candidates.iterator())
+		{
+			var mob = getMob(mob.cx + cand.dx, mob.cy + cand.dy);
+			if (mob != null)
+			{
+				candidates.remove(cand);
+			}
+		}
+
+		if (candidates.length > 0)
+		{
+			var cand = pirhana.MathTools.pick(candidates);
+			mobwalk(mob, cand.dx, cand.dy);
+			mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
+
+			if (cansee(player, mob, mob.los))
+			{
+				mob.targetx = player.cx;
+				mob.targety = player.cy;
+			}
+			return true;
+		}
+
+		return false;
 	}
 
 	function doAI()
@@ -768,6 +795,7 @@ class Game extends Screen
 
 	function los(x1, y1, x2, y2)
 	{
+		// bresenham
 		var sx = 0;
 		var sy = 0;
 		var dx = 0;
@@ -789,7 +817,6 @@ class Game extends Screen
 			if (!isWalkable(x1, y1, "sight"))
 				return false;
 			e2 = err + err;
-			// first = false;
 			if (e2 > -dy)
 			{
 				err -= dy;
@@ -817,7 +844,7 @@ class Game extends Screen
 
 		_lvl.each((x, y, tile) ->
 		{
-			if (fog.get(x, y) > 0 && los(x, y, cx, cy) && dist(cx, cy, x, y) < player.los)
+			if (fog.get(x, y) > 0 && los(cx, cy, x, y) && dist(cx, cy, x, y) <= player.los)
 			{
 				unfogtile(x, y);
 			}
@@ -843,10 +870,46 @@ class Game extends Screen
 
 	function cansee(mob1:Mob, mob2:Mob, sight:Int = 99)
 	{
-		if (dist(mob1.cx, mob1.cy, mob2.cx, mob2.cy) < sight)
+		if (dist(mob1.cx, mob1.cy, mob2.cx, mob2.cy) <= sight)
 		{
 			return los(mob1.cx, mob1.cy, mob2.cx, mob2.cy);
 		}
 		return false;
+	}
+
+	function astar(cx:Int, cy:Int)
+	{
+		var candidates = [];
+		var newcands = [];
+		var step = 0;
+
+		distmap = new pirhana.Grid2D(_lvl.width, _lvl.height, (x, y) -> -1);
+		distmap.set(cx, cy, step);
+
+		candidates.push({x: cx, y: cy});
+
+		while (candidates.length > 0)
+		{
+			step++;
+			newcands = [];
+			for (c in candidates)
+			{
+				for (i in 0...4)
+				{
+					var dx = c.x + dirx[i];
+					var dy = c.y + diry[i];
+					if (_lvl.inBounds(dx, dy) && distmap.get(dx, dy) == -1)
+					{
+						distmap.set(dx, dy, step);
+
+						if (isWalkable(dx, dy, ""))
+						{
+							newcands.push({x: dx, y: dy});
+						}
+					}
+				}
+			}
+			candidates = newcands;
+		}
 	}
 }

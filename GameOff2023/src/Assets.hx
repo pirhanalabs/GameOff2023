@@ -22,6 +22,9 @@ enum Sprite
 	PlayerShadow;
 	PopupPatch;
 	WinSmallBtn;
+
+	BgNumPlayer;
+	BgNumEnemy;
 }
 
 enum Music {}
@@ -64,6 +67,8 @@ class Assets
 		manager.sprites.set(PlayerShadow, hxd.Res.sprites.player_shadow.toTile().center());
 		manager.sprites.set(PopupPatch, hxd.Res.sprites.patch_win.toTile());
 		manager.sprites.set(WinSmallBtn, hxd.Res.sprites.win_small_btn.toTile());
+		manager.sprites.set(BgNumPlayer, hxd.Res.sprites.player_num_bg.toTile().center());
+		manager.sprites.set(BgNumEnemy, hxd.Res.sprites.enemy_num_bg.toTile().center());
 	}
 
 	private static function initAnims()

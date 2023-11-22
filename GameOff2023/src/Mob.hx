@@ -24,6 +24,7 @@ class Mob
 	public var dir:engine.utils.Direction;
 	public var sprite(default, null):h2d.Bitmap;
 	public var score_o(default, null):h2d.Text;
+	public var scorebg(default, null):h2d.Object;
 	public var ani(get, never):Array<h2d.Tile>;
 	public var anims(default, null):Array<Array<h2d.Tile>>;
 
@@ -68,9 +69,15 @@ class Mob
 
 		this.dir = Down;
 		this.sprite = new h2d.Bitmap();
-		this.score_o = new h2d.Text(Assets.getFont(CelticTime16), this.sprite);
+
+		var numbg = new h2d.Bitmap(Assets.getSprite(BgNumEnemy), this.sprite);
+		scorebg = numbg;
+
+		this.score_o = new h2d.Text(Assets.getFont(CelticTime16), this.scorebg);
 		this.score_o.textAlign = Center;
 		this.score_o.filter = filter;
+		this.score_o.x = numbg.x;
+		this.score_o.y = numbg.y - 7.5;
 
 		this.offx = 0;
 		this.offy = 0;
@@ -90,6 +97,7 @@ class Mob
 				offx = 16;
 				offy = 24;
 				score = 3;
+				numbg.tile = Assets.getSprite(BgNumPlayer);
 			case Shrimp:
 				anims = [
 					Assets.getAnim(Assets.Anim.ShrimpWalkUp),
