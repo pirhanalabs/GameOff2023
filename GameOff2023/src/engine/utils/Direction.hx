@@ -25,10 +25,27 @@ enum abstract Direction(Int) to Int
 
 	public var dx(get, never):Int;
 	public var dy(get, never):Int;
+	public var inv_dx(get, never):Int;
+	public var inv_dy(get, never):Int;
 
 	public inline function new(dir:Int)
 	{
 		this = dir;
+	}
+
+	public inline function getOpposite()
+	{
+		return fromDeltas(inv_dx, inv_dy);
+	}
+
+	inline function get_inv_dx()
+	{
+		return dx * -1;
+	}
+
+	inline function get_inv_dy()
+	{
+		return dy * -1;
 	}
 
 	inline function get_dx()

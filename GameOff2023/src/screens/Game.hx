@@ -19,6 +19,10 @@ typedef PostUpdateFn = () -> Void;
 
 class Game extends Screen
 {
+	var shrimpCount:Int = 0;
+	var shrimpCountMax:Int = 0;
+	var shrimpLabel:h2d.Text;
+
 	var _upd:UpdateFn;
 	var _drw:PostUpdateFn;
 	var _lvl:Level;
@@ -34,7 +38,7 @@ class Game extends Screen
 			ty:Float,
 			t:Float
 		}>;
-
+	var baits:Array<Mob>;
 	var mobsDead:Array<{mob:Mob, dur:Float}>;
 	var mobs:Array<Mob>;
 
@@ -54,7 +58,8 @@ class Game extends Screen
 		GameAction.MOVE_UP,
 		GameAction.MOVE_DOWN,
 		GameAction.MOVE_LEFT,
-		GameAction.MOVE_RIGHT
+		GameAction.MOVE_RIGHT,
+		GameAction.INTERACT
 	];
 
 	var win:Array<Window> = [];
@@ -65,6 +70,7 @@ class Game extends Screen
 	var fade:h2d.Bitmap;
 
 	var wait:Float = 0; // do
+	var skipai = false;
 
 	public function new()
 	{
@@ -82,11 +88,28 @@ class Game extends Screen
 		fade = new h2d.Bitmap(h2d.Tile.fromColor(0x000000, Const.VIEW_WID, Const.VIEW_HEI));
 
 		startgame();
+		game.audio.playMusic(Assets.getMusic(MainTheme));
 	}
 
 	function startgame()
 	{
-		_lvl = new Level();
+		// load data
+		var data = haxe.Json.parse(hxd.Res.map_json.entry.getText());
+		var ents:Array<
+			{
+				x:Int,
+				y:Int,
+				id:Int,
+				val:String,
+			}> = data.entities;
+		var ttiles:Array<{x:Int, y:Int, val:Int}> = data.tiles;
+
+		_lvl = new Level(data.mapwid, data.maphei);
+
+		for (t in ttiles)
+		{
+			_lvl.getTile(t.x, t.y).id = t.val;
+		}
 
 		// tile cleanup
 		if (tiles != null)
@@ -100,7 +123,7 @@ class Game extends Screen
 
 		_lvl.each((x, y, t) ->
 		{
-			var b = new h2d.Bitmap(Assets.getAnim(Env)[t.getTileId()]);
+			var b = new h2d.Bitmap(Assets.getAnim(Env)[t.id]);
 			b.x = t.x * Const.TILE_WID;
 			b.y = t.y * Const.TILE_HEI;
 			tiles.push(b);
@@ -108,18 +131,41 @@ class Game extends Screen
 		});
 
 		mobs = [];
+		baits = [];
 		mobsDead = [];
 		floats = [];
 		fog = new pirhana.Grid2D(_lvl.width, _lvl.height, (x, y) -> 1);
 
+		for (ent in ents)
+		{
+			switch (ent.val)
+			{
+				case 'player':
+					player = addMob(Player, ent.x, ent.y);
+				case 'vase1':
+					addMob(Vase1, ent.x, ent.y);
+				case 'vase2':
+					addMob(Vase2, ent.x, ent.y);
+				case _:
+					if (StringTools.contains(ent.val, 'shrimp'))
+					{
+						var s = Std.parseInt(StringTools.replace(ent.val, 'shrimp', ''));
+						var m = addMob(Shrimp, ent.x, ent.y);
+						m.score = s;
+						shrimpCountMax++;
+					}
+			}
+		}
+
 		pausefollow = false;
-		player = addMob(Player, 5, 5);
 		drawScroller(1);
 
-		addMob(Shrimp, 11, 10);
-		addMob(Shrimp, 12, 10);
-		addMob(Shrimp, 13, 10);
-		addMob(Shrimp, 8, 7);
+		shrimpLabel = new h2d.Text(Assets.getFont(BitFantasy16));
+		// shrimpLabel.scale(2);
+		shrimpLabel.text = '${shrimpCount}/${shrimpCountMax} Shrimps';
+		shrimpLabel.x = 10;
+		shrimpLabel.y = 5;
+		game.render(Hud, shrimpLabel);
 
 		game.render(Hud, fade);
 		fade.alpha = 1;
@@ -196,6 +242,33 @@ class Game extends Screen
 		return null;
 	}
 
+	function placeBait()
+	{
+		if (player.score == 0)
+		{
+			return;
+		}
+		if (!isWalkable(player.cx + player.dir.dx, player.cy + player.dir.dy, "checkmob"))
+		{
+			return;
+		}
+		var h = player.score * 0.5;
+		var s = h;
+		if (h % 1 != 0)
+		{
+			h = Math.floor(h);
+			s = Math.ceil(s);
+		}
+		var m = addMob(Bait, player.cx + player.dir.dx, player.cy + player.dir.dy);
+		m.score = Math.floor(s);
+		player.score = Math.floor(h);
+		baits.push(m);
+		game.audio.playSfx(Assets.getSfx(BaitHurt));
+
+		skipai = false;
+		doAI();
+	}
+
 	// player only
 	function moveMob(mob:Mob, dir:Direction, mode:String = '')
 	{
@@ -212,11 +285,13 @@ class Game extends Screen
 		if (isWalkable(destx, desty, "checkmob"))
 		{
 			mobwalk(mob, dx, dy);
+			game.audio.playSfx(mob.move);
 		}
 		else
 		{
 			pausefollow = true;
 			mobbump(mob, dx, dy);
+			skipai = true;
 
 			var other = getMob(destx, desty);
 			if (other == null)
@@ -225,11 +300,18 @@ class Game extends Screen
 				if (t.fget(Bmp))
 				{
 					trigger_bump(t, destx, desty);
+					skipai = false;
 				}
 			}
 			else
 			{
+				skipai = false;
+				if (other.score <= mob.score && other.type == Shrimp)
+				{
+					shrimpCount++;
+				}
 				hitmob(mob, other);
+
 				game.camera.shakeS(0.1, 0.5);
 				// game.camera.bump(dx * 2 * -1, dy * 2 * -1);
 			}
@@ -259,25 +341,29 @@ class Game extends Screen
 
 	function hitmob(atk:Mob, def:Mob)
 	{
-		if (atk.score < def.score)
+		if (atk.score < def.score && def.dangerous)
 		{
 			// atker dies
-			def.flash = 15;
-			def.dead = true;
-			atk.score += def.score;
-			var x = def.cx * Const.TILE_WID + Const.TILE_WID_2;
-			var y = def.cy * Const.TILE_HEI;
-			addFloat('+${def.score}', x, y, 0xb0d07e);
+			atk.flash = 15;
+			atk.dead = true;
+			def.score += atk.score;
+			var x = atk.cx * Const.TILE_WID + Const.TILE_WID_2;
+			var y = atk.cy * Const.TILE_HEI;
+			addFloat('+${atk.score}', x, y, 0xb0d07e);
 
 			// kill the mob
-			mobsDead.push({mob: def, dur: 10});
-			mobs.remove(def);
+			game.audio.playSfx(atk.hurt);
+			mobsDead.push({mob: atk, dur: 10});
+			mobs.remove(atk);
+			baits.remove(atk);
 		}
 		else
 		{
+			// def dies
 			def.flash = 15;
 			def.dead = true;
 			atk.score += def.score;
+			game.audio.playSfx(def.hurt);
 			var x = def.cx * Const.TILE_WID + Const.TILE_WID_2;
 			var y = def.cy * Const.TILE_HEI + Const.TILE_HEI_2 - 5;
 			addFloat('+${def.score}', x, y, 0xb0d07e);
@@ -285,24 +371,30 @@ class Game extends Screen
 			// kill the mob
 			mobsDead.push({mob: def, dur: 10});
 			mobs.remove(def);
+			baits.remove(def);
 		}
 	}
 
 	function checkEnd()
 	{
-		return player.dead;
+		return player.dead || shrimpCount == shrimpCountMax;
 	}
 
 	var go_text:h2d.Text;
+	var winner:Bool = false;
 
 	function doGameOver()
 	{
 		_upd = update_gameover;
 		_drw = postupdate_gameover;
 
+		winner = shrimpCount == shrimpCountMax;
+
 		fadet = 0;
 
 		wait = 10;
+
+		game.audio.playMusic(Assets.getMusic(GameOver));
 
 		go_text = new h2d.Text(Assets.getFont(CelticTime16));
 		go_text.textAlign = Center;
@@ -322,19 +414,36 @@ class Game extends Screen
 		}
 		if (game.inputs.isAnyPressed())
 		{
-			cleanup();
-			startgame();
-			_upd = update_game;
-			_drw = postupdate_game;
-			go_text.remove();
+			if (winner)
+			{
+				game.screens.set(new Title());
+			}
+			else
+			{
+				cleanup();
+				startgame();
+				_upd = update_game;
+				_drw = postupdate_game;
+				go_text.remove();
+			}
+			game.audio.playSfx(Assets.getSfx(Confirm));
 		}
 	}
 
 	function cleanup()
 	{
+		shrimpLabel.remove();
+		shrimpCount = 0;
+		shrimpCountMax = 0;
+
 		for (mob in mobs)
 		{
 			mob.sprite.remove();
+		}
+
+		for (bait in baits)
+		{
+			bait.sprite.remove();
 		}
 
 		for (float in floats)
@@ -346,10 +455,23 @@ class Game extends Screen
 	function postupdate_gameover()
 	{
 		go_text.visible = fadet == 1;
-		go_text.text = 'You lost!\n\nYou have been hit by a mob\nwith a higher score than you.\n\n press any ';
-		go_text.text += game.inputs.isGamepad ? 'button' : 'key';
+
+		if (!winner)
+		{
+			go_text.text = 'You lost!\n\nYou have been hit by a mob\nwith a higher score than you.\n\nYou can place shrimp baits by pressing ${GameAction.INTERACT.getName()}\n\n press any ';
+			go_text.text += game.inputs.isGamepad ? 'button' : 'key';
+			go_text.text += ' to continue';
+		}
+		else
+		{
+			go_text.text = 'Congratulation!\n\nThe Order of Shrimp Hunters salute your brilliant service.\nShrimps will no longer be a threat in this region.';
+			go_text.text += '\n\nPress any';
+			go_text.text += game.inputs.isGamepad ? 'button' : 'key';
+			go_text.text += ' to continue';
+		}
+
 		go_text.x = Const.VIEW_WID_2;
-		go_text.y = Const.VIEW_HEI_2 - 40;
+		go_text.y = Const.VIEW_HEI_2 - 60;
 	}
 
 	function trigger_bump(tile:Level.LevelTile, cx:Int, cy:Int)
@@ -387,8 +509,6 @@ class Game extends Screen
 			player.mov(player);
 		}
 
-		// update_ai(frame);
-
 		if (pt == 1)
 		{
 			player.ox = 0;
@@ -403,8 +523,12 @@ class Game extends Screen
 			}
 			else
 			{
-				doAI();
+				if (!skipai)
+				{
+					doAI();
+				}
 			}
+			skipai = false;
 		}
 	}
 
@@ -525,6 +649,10 @@ class Game extends Screen
 			// doAI();
 			return;
 		}
+		if (btn == 4)
+		{
+			placeBait();
+		}
 	}
 
 	function getBtnBuffer()
@@ -570,7 +698,7 @@ class Game extends Screen
 		if (pausefollow)
 			return;
 		var destx = (Const.VIEW_WID_2 - player.sprite.x) - game.layers.scroller.x;
-		var desty = (Const.VIEW_HEI_2 - player.sprite.y) - game.layers.scroller.y;
+		var desty = (Const.VIEW_HEI_2 - player.sprite.y) - game.layers.scroller.y + 32;
 		game.layers.scroller.x += destx * mult * game.frame.tmod;
 		game.layers.scroller.y += desty * mult * game.frame.tmod;
 		// bounds
@@ -597,8 +725,16 @@ class Game extends Screen
 		mob.sprite.x = Std.int(mob.cx * Const.TILE_WID + mob.offx + mob.ox);
 		mob.sprite.y = Std.int(mob.cy * Const.TILE_HEI + mob.offx + mob.oy);
 
-		mob.scorebg.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
-		mob.scorebg.y = mob.sprite.tile.dy - 8; // sham
+		if (mob.sprite.tile != null)
+		{
+			mob.scorebg.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
+			mob.scorebg.y = mob.sprite.tile.dy - 8;
+		}
+		else
+		{
+			mob.scorebg.x = mob.sprite.getSize().width * 0.5;
+			mob.scorebg.y = -8;
+		}
 
 		mob.score_o.text = '${mob.score}';
 		// mob.score_o.x = mob.sprite.getSize().width * 0.5 + mob.sprite.tile.dx;
@@ -626,6 +762,14 @@ class Game extends Screen
 
 	override function update(frame:Frame)
 	{
+		#if debug
+		if (hxd.Key.isDown(hxd.Key.SHIFT) && hxd.Key.isPressed(hxd.Key.E))
+		{
+			game.screens.set(new screens.LevelEditor());
+			return;
+		}
+		#end
+
 		super.update(frame);
 		t += Math.pow(1, frame.tmod);
 
@@ -652,6 +796,14 @@ class Game extends Screen
 		_upd(frame);
 	}
 
+	override function dispose()
+	{
+		super.dispose();
+		game.layers.scroller.x = 0;
+		game.layers.scroller.y = 0;
+		game.layers.clearAll();
+	}
+
 	override function postupdate()
 	{
 		super.postupdate();
@@ -661,10 +813,13 @@ class Game extends Screen
 		drawWindows();
 		drawFloats();
 
-		// fog
+		// tile things
 		_lvl.each((x, y, tile) ->
 		{
-			tiles[y * _lvl.width + x].visible = fog.get(x, y) == 0;
+			var t = tiles[y * _lvl.width + x];
+			t.visible = fog.get(x, y) == 0;
+			t.tile = getFrame(tile.ani);
+
 			var mob = getMob(x, y);
 			if (mob != null)
 			{
@@ -675,15 +830,44 @@ class Game extends Screen
 		game.layers.ysort(Actors);
 	}
 
+	function chasebait(mob:Mob)
+	{
+		if (mob.target != null && mob.target.type == Bait)
+			return false;
+
+		for (bait in baits)
+		{
+			if (cansee(bait, mob, mob.los))
+			{
+				mob.target = bait;
+				mob.targetx = bait.cx;
+				mob.targety = bait.cy;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	function ai_wait(mob:Mob)
 	{
+		if (chasebait(mob))
+		{
+			mob.task = ai_attack;
+			var f = addFloat('baited!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			mob.runaway = false;
+			return true;
+		}
+
 		if (cansee(player, mob, mob.los))
 		{
 			mob.task = ai_attack;
+			mob.target = player;
 			mob.targetx = player.cx;
 			mob.targety = player.cy;
-			var f = addFloat('!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
-			f.txt.scale(2);
+			mob.runaway = player.score > mob.score;
+			var f = addFloat(mob.runaway ? 'scared!' : 'hungry!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
 			return true;
 		}
 		return false;
@@ -691,17 +875,33 @@ class Game extends Screen
 
 	function ai_attack(mob:Mob)
 	{
-		// attack block
-		// todo:
-		// attack player if stronger
-		// do nothing if weakers
-		if (dist(mob.cx, mob.cy, player.cx, player.cy) <= 1)
+		// chase bait if one comes in view
+		if (chasebait(mob))
 		{
-			var dx = player.cx - mob.cx;
-			var dy = player.cy - mob.cy;
+			mob.task = ai_attack;
+			var f = addFloat('baited!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			mob.runaway = false;
+			return true;
+		}
+
+		if (mob.target.dead)
+		{
+			mob.target = null;
+			mob.task = ai_wait;
+			ai_wait(mob);
+			return false;
+		}
+
+		if (dist(mob.cx, mob.cy, mob.target.cx, mob.target.cy) <= 1 && (mob.target.type == Bait || mob.target.score < mob.score))
+		{
+			var dx = mob.target.cx - mob.cx;
+			var dy = mob.target.cy - mob.cy;
 			mob.dir = engine.utils.Direction.fromDeltas(dx, dy);
 			mobbump(mob, dx, dy);
-			hitmob(mob, player);
+			hitmob(mob, mob.target);
+			mob.task = ai_wait;
+			mob.target = null;
 			return true;
 		}
 
@@ -709,15 +909,32 @@ class Game extends Screen
 		{
 			mob.task = ai_wait;
 			addFloat('?', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
-			return true;
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			return false;
 		}
 
-		var bdst = 999.0;
+		if (mob.runaway && (dist(mob.cx, mob.cy, mob.target.cx, mob.target.cy) > mob.los + 1 && !cansee(mob.target, mob, mob.los)))
+		{
+			mob.task = ai_wait;
+			addFloat('?', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			return false;
+		}
+
+		var runaway = mob.target.score > mob.score;
+
+		if (mob.runaway != runaway)
+		{
+			mob.runaway = runaway;
+			addFloat(mob.runaway ? 'scared!' : 'hungry!', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			return false;
+		}
+		runaway ? astar(mob.target.cx, mob.target.cy) : astar(mob.targetx, mob.targety);
+		var bdst = runaway ? -999 : 999.0;
 		var bdx = 0;
 		var bdy = 0;
 		var candidates = [];
-
-		astar(mob.targetx, mob.targety);
 
 		for (i in 0...4)
 		{
@@ -727,7 +944,9 @@ class Game extends Screen
 			if (isWalkable(mob.cx + dx, mob.cy + dy, ''))
 			{
 				var dst = distmap.get(mob.cx + dx, mob.cy + dy);
-				if (dst < bdst)
+				var cond = runaway ? dst > bdst : dst < bdst;
+
+				if (cond)
 				{
 					candidates = [];
 					bdst = dst;
@@ -738,31 +957,36 @@ class Game extends Screen
 				}
 			}
 		}
-
 		// this makes the mob wait rather than take undesireable directions
 		for (cand in candidates.iterator())
 		{
 			var mob = getMob(mob.cx + cand.dx, mob.cy + cand.dy);
+
 			if (mob != null)
 			{
 				candidates.remove(cand);
 			}
 		}
-
 		if (candidates.length > 0)
 		{
 			var cand = pirhana.MathTools.pick(candidates);
 			mobwalk(mob, cand.dx, cand.dy);
+			game.audio.playSfx(mob.move);
 			mob.dir = engine.utils.Direction.fromDeltas(bdx, bdy);
-
 			if (cansee(player, mob, mob.los))
 			{
-				mob.targetx = player.cx;
-				mob.targety = player.cy;
+				mob.targetx = mob.target.cx;
+				mob.targety = mob.target.cy;
 			}
 			return true;
 		}
-
+		else if (!cansee(mob.target, mob))
+		{
+			mob.task = ai_wait;
+			addFloat('?', mob.cx * Const.TILE_WID + Const.TILE_WID_2, mob.cy * Const.TILE_HEI, 0xf6c65e);
+			game.audio.playSfx(Assets.getSfx(ShrimpAlert));
+			return false;
+		}
 		return false;
 	}
 
@@ -778,7 +1002,8 @@ class Game extends Screen
 			}
 
 			mob.resetMovement();
-			moving = mob.task(mob) || moving;
+			if (mob.task != null)
+				moving = mob.task(mob) || moving;
 		}
 
 		if (moving)

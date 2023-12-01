@@ -11,9 +11,11 @@ enum TileFlag
 
 class LevelTile
 {
-	public var id(default, null):Int;
+	public var id(default, set):Int;
 	public var x(default, null):Int;
 	public var y(default, null):Int;
+
+	public var ani:Array<h2d.Tile>;
 
 	private var flags:haxe.EnumFlags<TileFlag>;
 
@@ -23,22 +25,23 @@ class LevelTile
 		this.y = y;
 		this.id = id;
 		flags = new EnumFlags();
+	}
 
-		switch (id)
+	inline function set_id(val:Int)
+	{
+		flags = new EnumFlags();
+		switch (val)
 		{
 			case 1:
 
-			case 2:
+			case 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22:
 				flags.set(Col);
 				flags.set(BlockSight);
-			case 3:
-				flags.set(BlockSight);
-				flags.set(Col);
-			case 4: // ?
-				flags.set(Bmp);
-				flags.set(Col);
 			case _:
 		}
+		var envs = Assets.getAnim(Env);
+		ani = [envs[val]];
+		return id = val;
 	}
 
 	public function getTileId()
@@ -60,27 +63,12 @@ class Level
 	public var level(default, null):pirhana.Grid2D<LevelTile>;
 	public var light(default, null):pirhana.Grid2D<Bool>;
 
-	public function new()
+	public function new(wid:Int, hei:Int)
 	{
-		this.width = 16;
-		this.height = 13;
-
-		var data = [
-			[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
-			[3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 3],
-			[3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3],
-			[3, 1, 3, 3, 3, 3, 1, 3, 3, 1, 3, 3, 3, 3, 3, 3],
-			[3, 1, 3, 1, 1, 3, 1, 3, 1, 1, 3, 3, 1, 1, 1, 3],
-			[3, 1, 3, 3, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3],
-			[3, 1, 1, 1, 1, 1, 1, 3, 1, 1, 3, 1, 1, 1, 1, 3],
-			[3, 3, 3, 1, 4, 3, 3, 3, 1, 1, 3, 3, 3, 3, 1, 3],
-			[3, 1, 1, 1, 1, 3, 1, 3, 1, 1, 3, 1, 1, 1, 1, 3],
-			[3, 1, 3, 3, 1, 3, 1, 3, 3, 3, 3, 1, 1, 1, 1, 3],
-			[3, 1, 3, 3, 1, 3, 1, 1, 1, 1, 3, 1, 1, 1, 1, 3],
-			[3, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3],
-			[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
-		];
-		level = new pirhana.Grid2D(width, height, (x, y) -> new LevelTile(x, y, data[y][x]));
+		this.width = wid;
+		this.height = hei;
+		trace(width, height);
+		level = new pirhana.Grid2D(wid, hei, (x, y) -> new LevelTile(x, y, 30));
 	}
 
 	public function fget(cx:Int, cy:Int, flag:TileFlag)

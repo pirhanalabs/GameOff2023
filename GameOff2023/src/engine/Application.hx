@@ -93,6 +93,7 @@ class Application extends hxd.App
 
 	private function onCrash(err:Dynamic)
 	{
+		#if hl
 		var title = 'Fatal Error';
 		var msg = 'Error:${Std.string(err)}';
 		var flags:haxe.EnumFlags<hl.UI.DialogFlags> = new haxe.EnumFlags();
@@ -101,6 +102,7 @@ class Application extends hxd.App
 		hl.UI.dialog(title, msg, flags);
 
 		hxd.System.exit();
+		#end
 	}
 
 	private function start()

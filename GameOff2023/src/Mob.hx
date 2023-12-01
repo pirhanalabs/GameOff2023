@@ -8,6 +8,10 @@ class Mob
 	// type
 	public var type(default, null):MobType;
 
+	// behavior
+	public var dangerous(default, null):Bool = true;
+	public var runaway:Bool = false;
+
 	// position
 	public var cx:Int;
 	public var cy:Int;
@@ -49,8 +53,14 @@ class Mob
 
 	// behavior stuff
 	public var task:Mob->Bool;
+	public var target:Mob;
 	public var targetx:Int;
 	public var targety:Int;
+
+	// sfx
+	public var hurt:hxd.res.Sound;
+	public var alert:hxd.res.Sound;
+	public var move:hxd.res.Sound;
 
 	public function new(type:MobType, cx:Int, cy:Int)
 	{
@@ -83,11 +93,46 @@ class Mob
 		this.offy = 0;
 
 		this.score = 1;
-		this.los = 4;
+		this.los = 3;
 
 		switch (type)
 		{
+			case Bait:
+				hurt = Assets.getSfx(BaitHurt);
+				numbg.tile = Assets.getSprite(BgNumPlayer);
+				dangerous = false;
+				anims = [
+					Assets.getAnim(Bait),
+					Assets.getAnim(Bait),
+					Assets.getAnim(Bait),
+					Assets.getAnim(Bait),
+				];
+				score = 1; // this is changed on creation
+			case Vase1:
+				hurt = Assets.getSfx(Vase1Hurt);
+				numbg.tile = Assets.getSprite(BgNumPlayer);
+				dangerous = false;
+				anims = [
+					Assets.getAnim(Assets.Anim.Vase1),
+					Assets.getAnim(Assets.Anim.Vase1),
+					Assets.getAnim(Assets.Anim.Vase1),
+					Assets.getAnim(Assets.Anim.Vase1),
+				];
+				score = 3;
+			case Vase2:
+				hurt = Assets.getSfx(Vase2Hurt);
+				numbg.tile = Assets.getSprite(BgNumPlayer);
+				dangerous = false;
+				anims = [
+					Assets.getAnim(Assets.Anim.Vase2),
+					Assets.getAnim(Assets.Anim.Vase2),
+					Assets.getAnim(Assets.Anim.Vase2),
+					Assets.getAnim(Assets.Anim.Vase2),
+				];
+				score = 5;
 			case Player:
+				move = Assets.getSfx(PlayerMove);
+				hurt = Assets.getSfx(PlayerHurt);
 				anims = [
 					Assets.getAnim(Assets.Anim.PlayerWalkUp),
 					Assets.getAnim(Assets.Anim.PlayerWalkLeft),
@@ -99,6 +144,9 @@ class Mob
 				score = 3;
 				numbg.tile = Assets.getSprite(BgNumPlayer);
 			case Shrimp:
+				move = Assets.getSfx(PlayerMove);
+				alert = Assets.getSfx(ShrimpAlert);
+				hurt = Assets.getSfx(ShrimpHurt);
 				anims = [
 					Assets.getAnim(Assets.Anim.ShrimpWalkUp),
 					Assets.getAnim(Assets.Anim.ShrimpWalkLeft),

@@ -22,6 +22,7 @@ class Game
 	public var camera(default, null):Camera;
 	public var frame(default, null):Frame;
 	public var window(get, null):hxd.Window;
+	public var audio(default, null):AudioManager;
 
 	private final function new(app:hxd.App)
 	{
@@ -32,6 +33,7 @@ class Game
 		inputs = new InputManager();
 		frame = new Frame();
 		camera = new Camera();
+		audio = new AudioManager();
 		app.s2d.addChild(layers.ob);
 	}
 
