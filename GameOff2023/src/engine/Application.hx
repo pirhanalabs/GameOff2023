@@ -101,7 +101,7 @@ class Application extends hxd.App
 
 		hl.UI.dialog(title, msg, flags);
 
-		hxd.System.exit();
+		// hxd.System.exit();
 		#end
 	}
 

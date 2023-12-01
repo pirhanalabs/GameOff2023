@@ -102,7 +102,6 @@ class Assets
 	{
 		// environment tilesheet
 		manager.anims.set(Env, manager.subTilesheet(hxd.Res.sprites.env.toTile(), 32, 32, 0, 0));
-		trace(manager.anims.get(Env));
 
 		// player tilesheet
 		var tiles = manager.subTilesheet(hxd.Res.sprites.sheets.player.toTile(), 32, 32, -16, -24);
