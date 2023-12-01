@@ -3,6 +3,8 @@
 -lib pirhana
 -lib hlsdl
 
+# -js bin/client.js
+
 -hl bin/client.hl
 
 -main Main
